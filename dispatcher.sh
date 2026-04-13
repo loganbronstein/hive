@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Jarvis Dispatcher v2
+# Hive Dispatcher v2
 # One system for day and night. Opens/closes worker terminals via tmux.
-# Logan talks to Jarvis. Jarvis talks to workers. Workers execute.
+# Logan talks to Hive. Hive talks to workers. Workers execute.
 
 set -uo pipefail
 
@@ -92,12 +92,11 @@ create_worker() {
     tmux set-option -t "worker-${name}" status-style "bg=colour235,fg=colour214" 2>/dev/null || true
     tmux set-option -t "worker-${name}" status-left-style "bg=colour214,fg=colour0,bold" 2>/dev/null || true
 
-    # Start claude with full permission bypass
-    # --dangerously-skip-permissions: bypass permission system
-    # --permission-mode bypassPermissions: belt-and-suspenders
-    # Note: --bare breaks OAuth login. Project hooks still fire (Stop hook shows
-    # non-blocking errors about session handoff, but these don't affect execution).
-    tmux send-keys -t "worker-${name}" "$CLAUDE_BIN --dangerously-skip-permissions --permission-mode bypassPermissions" Enter
+    # Start claude with full permission bypass and pre-trusted directories
+    # --dangerously-skip-permissions: bypass tool permission system
+    # --permission-mode bypassPermissions: additional bypass
+    # --add-dir: pre-trust directories workers commonly write to
+    tmux send-keys -t "worker-${name}" "$CLAUDE_BIN --dangerously-skip-permissions --permission-mode bypassPermissions --add-dir $HOME/.claude/dispatcher --add-dir $HOME/Sale\ Advisor --add-dir $HOME/Sale\ Advisor/Website/sale-advisor-website --add-dir $HOME/Sale\ Advisor/Projects/ListFlow" Enter
 
     # Wait for claude to initialize
     sleep 3
@@ -182,6 +181,17 @@ send_task() {
 
     log "INFO" "Sent task to worker $name (saved: $prompt_file)"
     telegram_send "Task sent to *${name}*"
+}
+
+send_loop_task() {
+    local name="$1"
+    local prompt="$2"
+
+    local loop_suffix='
+
+AFTER completing this task, check ~/.claude/dispatcher/task-board.md for unclaimed tasks in the Queue section. If there is an unclaimed task, claim it by outputting CLAIMING: [task description], then start working on it immediately. If no tasks are available, output IDLE and wait for the next task.'
+
+    send_task "$name" "${prompt}${loop_suffix}"
 }
 
 read_output() {
@@ -294,7 +304,7 @@ check_conflicts() {
 # ============================================================
 
 dispatch_status() {
-    echo "=== Jarvis Dispatcher Status ==="
+    echo "=== Hive Status ==="
     echo "Time: $(date '+%Y-%m-%d %H:%M:%S')"
     echo ""
 
@@ -338,7 +348,7 @@ dispatch_status() {
 
 dispatch_stop() {
     log "INFO" "Stopping all workers..."
-    telegram_send "Jarvis shutting down all workers"
+    telegram_send "Hive shutting down all workers"
     close_all_workers
     log "INFO" "All workers stopped"
 }
@@ -353,7 +363,7 @@ night_mode() {
     start_time=$(date '+%H:%M')
 
     log "INFO" "Night mode started. Will run until $end_time"
-    telegram_send "Jarvis night mode started. Running until ${end_time}."
+    telegram_send "Hive night mode started. Running until ${end_time}."
 
     # Initialize report
     local completed=0
@@ -507,6 +517,9 @@ case "${1:-help}" in
     send)
         send_task "${2:?Worker name required}" "${3:?Prompt required}"
         ;;
+    send-loop)
+        send_loop_task "${2:?Worker name required}" "${3:?Prompt required}"
+        ;;
     read)
         read_output "${2:?Worker name required}" "${3:-100}"
         ;;
@@ -531,7 +544,7 @@ case "${1:-help}" in
         ;;
     help)
         cat << 'HELP'
-Jarvis Dispatcher v2
+Hive Dispatcher v2
 
 Usage: dispatcher.sh <command> [args]
 
@@ -540,6 +553,7 @@ Worker Management:
   close <name>            Close a worker terminal
   close-all               Close all worker terminals
   send <name> <prompt>    Send a task to a worker
+  send-loop <name> <prompt> Send task + auto-pick-up next from task-board
   read <name> [lines]     Read worker output (default: 100 lines)
 
 Monitoring:
