@@ -11,7 +11,13 @@ LOG_FILE="$DISPATCHER_DIR/dispatcher.log"
 QUEUE_FILE="$DISPATCHER_DIR/task-queue.md"
 REPORT_FILE="$DISPATCHER_DIR/morning-report.md"
 CLAUDE_BIN="$HOME/.local/bin/claude"
+TEMPLATE_FILE="$DISPATCHER_DIR/prompt-template.sh"
 MAX_WORKERS=10
+
+# Load prompt template functions
+if [[ -f "$TEMPLATE_FILE" ]]; then
+    source "$TEMPLATE_FILE"
+fi
 HEALTH_CHECK_INTERVAL=600  # 10 minutes
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
@@ -153,23 +159,32 @@ close_all_workers() {
 send_task() {
     local name="$1"
     local prompt="$2"
+    local project_dir="${3:-$HOME/Sale Advisor}"
 
     if ! tmux has-session -t "worker-${name}" 2>/dev/null; then
         log "ERROR" "Worker $name does not exist"
         return 1
     fi
 
+    # Wrap with standard template if available
+    local wrapped_prompt
+    if type build_prompt &>/dev/null; then
+        wrapped_prompt=$(build_prompt "$project_dir" "$prompt")
+    else
+        wrapped_prompt="$prompt"
+    fi
+
     # Save prompt to file for debugging/replay
     local timestamp
     timestamp=$(date '+%Y%m%d-%H%M%S')
     local prompt_file="${PROMPTS_DIR}/${name}-${timestamp}.md"
-    echo "$prompt" > "$prompt_file"
+    echo "$wrapped_prompt" > "$prompt_file"
 
     # Send to worker via tmux
     # Use a temp file to avoid shell escaping issues with send-keys
     local tmp_file
     tmp_file=$(mktemp)
-    echo "$prompt" > "$tmp_file"
+    echo "$wrapped_prompt" > "$tmp_file"
 
     # Paste the prompt content, then wait for it to render before hitting Enter
     tmux load-buffer "$tmp_file"
@@ -186,12 +201,44 @@ send_task() {
 send_loop_task() {
     local name="$1"
     local prompt="$2"
+    local project_dir="${3:-$HOME/Sale Advisor}"
 
-    local loop_suffix='
+    if ! tmux has-session -t "worker-${name}" 2>/dev/null; then
+        log "ERROR" "Worker $name does not exist"
+        return 1
+    fi
+
+    # Wrap with loop template if available, else fall back to raw + suffix
+    local wrapped_prompt
+    if type build_loop_prompt &>/dev/null; then
+        wrapped_prompt=$(build_loop_prompt "$project_dir" "$prompt")
+    else
+        local loop_suffix='
 
 AFTER completing this task, check ~/.claude/dispatcher/task-board.md for unclaimed tasks in the Queue section. If there is an unclaimed task, claim it by outputting CLAIMING: [task description], then start working on it immediately. If no tasks are available, output IDLE and wait for the next task.'
+        wrapped_prompt="${prompt}${loop_suffix}"
+    fi
 
-    send_task "$name" "${prompt}${loop_suffix}"
+    # Save prompt to file for debugging/replay
+    local timestamp
+    timestamp=$(date '+%Y%m%d-%H%M%S')
+    local prompt_file="${PROMPTS_DIR}/${name}-${timestamp}.md"
+    echo "$wrapped_prompt" > "$prompt_file"
+
+    # Send to worker via tmux
+    local tmp_file
+    tmp_file=$(mktemp)
+    echo "$wrapped_prompt" > "$tmp_file"
+
+    tmux load-buffer "$tmp_file"
+    tmux paste-buffer -t "worker-${name}"
+    sleep 2
+    tmux send-keys -t "worker-${name}" Enter
+
+    rm -f "$tmp_file"
+
+    log "INFO" "Sent loop task to worker $name (saved: $prompt_file)"
+    telegram_send "Loop task sent to *${name}*"
 }
 
 read_output() {
@@ -246,6 +293,28 @@ worker_status() {
 # HEALTH MONITORING
 # ============================================================
 
+check_permissions() {
+    local name="$1"
+
+    if ! tmux has-session -t "worker-${name}" 2>/dev/null; then
+        return 0
+    fi
+
+    local output
+    output=$(read_output "$name" 20)
+
+    if echo "$output" | grep -qiE '(Do you want to|Esc to cancel|Yes, and allow|Allow once|permission)' 2>/dev/null; then
+        # Auto-accept: option 1 (Yes) is pre-selected, just press Enter
+        tmux send-keys -t "worker-${name}" Enter
+        log "INFO" "Auto-accepted permission prompt on worker $name"
+        telegram_send "Auto-accepted permission on *${name}*"
+        sleep 2
+        return 1
+    fi
+
+    return 0
+}
+
 check_health() {
     local workers
     workers=$(list_workers)
@@ -262,6 +331,11 @@ check_health() {
         output_sample=$(read_output "$name" 5 | tail -3)
 
         echo "Worker: $name | Status: $status"
+
+        # Check for stuck permission prompts and auto-accept them
+        if ! check_permissions "$name" 2>/dev/null; then
+            echo "  AUTO-ACCEPTED: Permission prompt was detected and accepted."
+        fi
 
         if [[ "$status" == "BLOCKED" ]]; then
             local block_reason
@@ -515,10 +589,10 @@ case "${1:-help}" in
         close_all_workers
         ;;
     send)
-        send_task "${2:?Worker name required}" "${3:?Prompt required}"
+        send_task "${2:?Worker name required}" "${3:?Prompt required}" "${4:-$HOME/Sale Advisor}"
         ;;
     send-loop)
-        send_loop_task "${2:?Worker name required}" "${3:?Prompt required}"
+        send_loop_task "${2:?Worker name required}" "${3:?Prompt required}" "${4:-$HOME/Sale Advisor}"
         ;;
     read)
         read_output "${2:?Worker name required}" "${3:-100}"
@@ -536,10 +610,24 @@ case "${1:-help}" in
     health)
         check_health
         ;;
+    check-permissions)
+        check_permissions "${2:?Worker name required}"
+        ;;
     stop)
         dispatch_stop
         ;;
+    selftest)
+        log "INFO" "Running self-test..."
+        bash "$DISPATCHER_DIR/self-test.sh"
+        ;;
     night)
+        # Run self-test before starting overnight workers
+        log "INFO" "Pre-flight self-test..."
+        if ! bash "$DISPATCHER_DIR/self-test.sh"; then
+            log "ERROR" "Self-test failed. Aborting night mode."
+            telegram_send "Night mode ABORTED: self-test failed. Workers cannot run without prompts."
+            exit 1
+        fi
         night_mode "${2:-08:45}"
         ;;
     help)
@@ -552,16 +640,18 @@ Worker Management:
   create <name> [dir]     Create a new worker terminal
   close <name>            Close a worker terminal
   close-all               Close all worker terminals
-  send <name> <prompt>    Send a task to a worker
-  send-loop <name> <prompt> Send task + auto-pick-up next from task-board
+  send <name> <prompt> [dir]  Send a task to a worker (dir defaults to ~/Sale Advisor)
+  send-loop <name> <prompt> [dir]  Send task + auto-pick-up next from task-board
   read <name> [lines]     Read worker output (default: 100 lines)
 
 Monitoring:
   list                    List all active workers
   status [name]           Show status (all workers or specific one)
   health                  Health check all workers
+  check-permissions <name> Check if worker has a permission prompt
 
 Control:
+  selftest                Run permission self-test (30s max)
   stop                    Gracefully stop all workers
   night [end_time]        Start night mode (default end: 08:45)
   help                    Show this help
