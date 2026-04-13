@@ -92,8 +92,12 @@ create_worker() {
     tmux set-option -t "worker-${name}" status-style "bg=colour235,fg=colour214" 2>/dev/null || true
     tmux set-option -t "worker-${name}" status-left-style "bg=colour214,fg=colour0,bold" 2>/dev/null || true
 
-    # Start claude with skip permissions inside the tmux session
-    tmux send-keys -t "worker-${name}" "$CLAUDE_BIN --dangerously-skip-permissions" Enter
+    # Start claude with full permission bypass
+    # --dangerously-skip-permissions: bypass permission system
+    # --permission-mode bypassPermissions: belt-and-suspenders
+    # Note: --bare breaks OAuth login. Project hooks still fire (Stop hook shows
+    # non-blocking errors about session handoff, but these don't affect execution).
+    tmux send-keys -t "worker-${name}" "$CLAUDE_BIN --dangerously-skip-permissions --permission-mode bypassPermissions" Enter
 
     # Wait for claude to initialize
     sleep 3
@@ -168,9 +172,10 @@ send_task() {
     tmp_file=$(mktemp)
     echo "$prompt" > "$tmp_file"
 
-    # Paste the prompt content
+    # Paste the prompt content, then wait for it to render before hitting Enter
     tmux load-buffer "$tmp_file"
     tmux paste-buffer -t "worker-${name}"
+    sleep 2
     tmux send-keys -t "worker-${name}" Enter
 
     rm -f "$tmp_file"
