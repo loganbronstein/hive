@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis Command Center</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #111113;
+            --surface2: #19191b;
+            --border: #2a2a2e;
+            --text: #e4e4e7;
+            --text-dim: #71717a;
+            --text-muted: #52525b;
+            --gold: #c9a84c;
+            --gold-dim: #8a7535;
+            --green: #22c55e;
+            --green-dim: #166534;
+            --blue: #3b82f6;
+            --blue-dim: #1e40af;
+            --orange: #f59e0b;
+            --orange-dim: #92400e;
+            --red: #ef4444;
+            --red-dim: #991b1b;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* ---- HEADER ---- */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .header-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+        }
+        .header-dot.offline { background: var(--red); box-shadow: 0 0 8px var(--red); }
+        .header-title {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.3px;
+        }
+        .header-title span { color: var(--gold); }
+        .header-right {
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        /* ---- TABS ---- */
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            padding: 0 24px;
+        }
+        .tab {
+            padding: 12px 20px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-dim);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.15s ease;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active {
+            color: var(--gold);
+            border-bottom-color: var(--gold);
+        }
+        .tab .badge {
+            display: inline-block;
+            background: var(--gold-dim);
+            color: var(--gold);
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 10px;
+            margin-left: 6px;
+            font-weight: 600;
+        }
+
+        /* ---- TAB CONTENT ---- */
+        .tab-content { display: none; padding: 24px; }
+        .tab-content.active { display: block; }
+
+        /* ---- OVERVIEW TAB ---- */
+        .project-bar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+        }
+        .project-bar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .project-name { font-size: 16px; font-weight: 600; }
+        .project-pct { font-size: 24px; font-weight: 700; color: var(--gold); }
+        .project-progress {
+            width: 100%;
+            height: 6px;
+            background: var(--surface2);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .project-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+        .project-stats {
+            display: flex;
+            gap: 24px;
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+        .project-stats span { color: var(--text); font-weight: 600; }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            margin-bottom: 12px;
+        }
+
+        .workers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+
+        .worker-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .worker-card:hover {
+            border-color: var(--gold-dim);
+            transform: translateY(-1px);
+        }
+        .worker-card::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+        }
+        .worker-card.working::before { background: var(--green); }
+        .worker-card.done::before { background: var(--blue); }
+        .worker-card.blocked::before { background: var(--orange); }
+        .worker-card.error::before { background: var(--red); }
+        .worker-card.idle::before { background: var(--text-muted); }
+
+        .worker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        .worker-name { font-size: 14px; font-weight: 600; }
+        .worker-badge {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .worker-badge.working { background: var(--green-dim); color: var(--green); }
+        .worker-badge.done { background: var(--blue-dim); color: var(--blue); }
+        .worker-badge.blocked { background: var(--orange-dim); color: var(--orange); }
+        .worker-badge.error { background: var(--red-dim); color: var(--red); }
+        .worker-badge.idle { background: var(--surface2); color: var(--text-muted); }
+
+        .worker-status-text {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        .worker-progress {
+            width: 100%;
+            height: 3px;
+            background: var(--surface2);
+            border-radius: 2px;
+            margin-top: 8px;
+        }
+        .worker-progress-fill {
+            height: 100%;
+            background: var(--gold);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        /* Expanded worker detail */
+        .worker-detail {
+            display: none;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .worker-card.expanded .worker-detail { display: block; }
+        .worker-terminal {
+            background: var(--bg);
+            border-radius: 6px;
+            padding: 12px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 11px;
+            color: var(--text-dim);
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.5;
+        }
+
+        /* Attention section */
+        .attention-card {
+            background: var(--surface);
+            border: 1px solid var(--red-dim);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 8px;
+        }
+        .attention-card.warn { border-color: var(--orange-dim); }
+        .attention-worker { font-size: 13px; font-weight: 600; color: var(--orange); }
+        .attention-card.error .attention-worker { color: var(--red); }
+        .attention-message { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+
+        /* Recently completed */
+        .completed-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .completed-item:last-child { border-bottom: none; }
+        .completed-check { color: var(--green); font-size: 14px; }
+        .completed-text { color: var(--text-dim); }
+
+        /* ---- PROJECT TAB (Kanban) ---- */
+        .kanban {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            min-height: 400px;
+        }
+        .kanban-column {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+        .kanban-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .kanban-title {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .kanban-count {
+            font-size: 11px;
+            color: var(--text-muted);
+            background: var(--surface2);
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        .kanban-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            line-height: 1.4;
+            color: var(--text-dim);
+        }
+        .kanban-card:hover { border-color: var(--gold-dim); }
+
+        /* ---- AGENTS TAB ---- */
+        .agent-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .agent-table th {
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .agent-table td {
+            padding: 12px;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-dim);
+        }
+        .agent-table tr:hover td { background: var(--surface); }
+        .agent-name { font-weight: 600; color: var(--text); }
+        .prompt-preview {
+            font-family: 'SF Mono', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+            max-width: 400px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ---- LOG TAB ---- */
+        .log-filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .log-filter {
+            font-size: 12px;
+            padding: 4px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text-dim);
+            cursor: pointer;
+        }
+        .log-filter.active {
+            background: var(--gold-dim);
+            color: var(--gold);
+            border-color: var(--gold-dim);
+        }
+        .log-list {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            display: flex;
+            gap: 12px;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .log-entry:last-child { border-bottom: none; }
+        .log-time {
+            color: var(--text-muted);
+            font-family: 'SF Mono', monospace;
+            font-size: 11px;
+            white-space: nowrap;
+            min-width: 80px;
+        }
+        .log-msg { color: var(--text-dim); line-height: 1.4; }
+        .log-msg.error { color: var(--red); }
+        .log-msg.warn { color: var(--orange); }
+        .log-msg.info { color: var(--text-dim); }
+        .log-msg.telegram { color: var(--blue); }
+
+        /* ---- EMPTY STATE ---- */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.3; }
+        .empty-state-text { font-size: 14px; }
+
+        /* ---- RESPONSIVE ---- */
+        @media (max-width: 768px) {
+            .kanban { grid-template-columns: 1fr; }
+            .workers-grid { grid-template-columns: 1fr; }
+            .tabs { overflow-x: auto; }
+            .project-stats { flex-wrap: wrap; }
+        }
+
+        /* ---- SOUND TOGGLE ---- */
+        .sound-toggle {
+            cursor: pointer;
+            font-size: 16px;
+            opacity: 0.5;
+            transition: opacity 0.15s;
+        }
+        .sound-toggle:hover { opacity: 1; }
+        .sound-toggle.active { opacity: 1; }
+
+        /* ---- SCROLLBAR ---- */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-left">
+        <div class="header-dot" id="status-dot"></div>
+        <div class="header-title"><span>JARVIS</span> Command Center</div>
+    </div>
+    <div class="header-right">
+        <span class="sound-toggle" id="sound-toggle" title="Toggle sound notifications">&#128264;</span>
+        &nbsp;&nbsp;
+        <span id="last-update">Connecting...</span>
+    </div>
+</div>
+
+<div class="tabs">
+    <div class="tab active" data-tab="overview">Overview <span class="badge" id="worker-count-badge">0</span></div>
+    <div class="tab" data-tab="project">Project</div>
+    <div class="tab" data-tab="agents">Agents</div>
+    <div class="tab" data-tab="log">Log</div>
+</div>
+
+<!-- OVERVIEW TAB -->
+<div class="tab-content active" id="tab-overview">
+    <div class="project-bar">
+        <div class="project-bar-header">
+            <div class="project-name" id="project-name">No Active Project</div>
+            <div class="project-pct" id="project-pct">0%</div>
+        </div>
+        <div class="project-progress">
+            <div class="project-progress-fill" id="project-progress-fill" style="width: 0%"></div>
+        </div>
+        <div class="project-stats">
+            <div><span id="stat-tasks">0</span> tasks</div>
+            <div><span id="stat-done">0</span> completed</div>
+            <div><span id="stat-workers">0</span> workers active</div>
+        </div>
+    </div>
+
+    <div id="attention-section" style="margin-bottom: 24px; display: none;">
+        <div class="section-title">Needs Attention</div>
+        <div id="attention-list"></div>
+    </div>
+
+    <div class="section-title">Active Workers</div>
+    <div class="workers-grid" id="workers-grid">
+        <div class="empty-state">
+            <div class="empty-state-icon">&#9678;</div>
+            <div class="empty-state-text">No active workers. Dispatch a task to get started.</div>
+        </div>
+    </div>
+
+    <div id="completed-section" style="display: none;">
+        <div class="section-title">Recently Completed</div>
+        <div id="completed-list"></div>
+    </div>
+</div>
+
+<!-- PROJECT TAB -->
+<div class="tab-content" id="tab-project">
+    <div class="kanban">
+        <div class="kanban-column">
+            <div class="kanban-header">
+                <div class="kanban-title">To Do</div>
+                <div class="kanban-count" id="kanban-todo-count">0</div>
+            </div>
+            <div id="kanban-todo"></div>
+        </div>
+        <div class="kanban-column">
+            <div class="kanban-header">
+                <div class="kanban-title">In Progress</div>
+                <div class="kanban-count" id="kanban-progress-count">0</div>
+            </div>
+            <div id="kanban-progress"></div>
+        </div>
+        <div class="kanban-column">
+            <div class="kanban-header">
+                <div class="kanban-title">Done</div>
+                <div class="kanban-count" id="kanban-done-count">0</div>
+            </div>
+            <div id="kanban-done"></div>
+        </div>
+        <div class="kanban-column">
+            <div class="kanban-header">
+                <div class="kanban-title">Blocked</div>
+                <div class="kanban-count" id="kanban-blocked-count">0</div>
+            </div>
+            <div id="kanban-blocked"></div>
+        </div>
+    </div>
+</div>
+
+<!-- AGENTS TAB -->
+<div class="tab-content" id="tab-agents">
+    <table class="agent-table" id="agent-table">
+        <thead>
+            <tr>
+                <th>Worker</th>
+                <th>Timestamp</th>
+                <th>Prompt</th>
+            </tr>
+        </thead>
+        <tbody id="agent-table-body">
+        </tbody>
+    </table>
+    <div class="empty-state" id="agents-empty">
+        <div class="empty-state-icon">&#128218;</div>
+        <div class="empty-state-text">No agent history yet. Prompts will appear here once workers are dispatched.</div>
+    </div>
+</div>
+
+<!-- LOG TAB -->
+<div class="tab-content" id="tab-log">
+    <div class="log-filters">
+        <div class="log-filter active" data-filter="all">All</div>
+        <div class="log-filter" data-filter="info">Activity</div>
+        <div class="log-filter" data-filter="error">Errors</div>
+        <div class="log-filter" data-filter="telegram">Telegram</div>
+    </div>
+    <div class="log-list" id="log-list"></div>
+</div>
+
+<script>
+    // ---- STATE ----
+    let state = null;
+    let soundEnabled = false;
+    let activeFilter = 'all';
+    let ws = null;
+    let previousWorkerCount = 0;
+
+    // ---- TABS ----
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+        });
+    });
+
+    // ---- LOG FILTERS ----
+    document.querySelectorAll('.log-filter').forEach(f => {
+        f.addEventListener('click', () => {
+            document.querySelectorAll('.log-filter').forEach(x => x.classList.remove('active'));
+            f.classList.add('active');
+            activeFilter = f.dataset.filter;
+            if (state) renderLog(state.log);
+        });
+    });
+
+    // ---- SOUND ----
+    document.getElementById('sound-toggle').addEventListener('click', () => {
+        soundEnabled = !soundEnabled;
+        document.getElementById('sound-toggle').classList.toggle('active', soundEnabled);
+        document.getElementById('sound-toggle').innerHTML = soundEnabled ? '&#128264;' : '&#128263;';
+    });
+
+    function playNotification() {
+        if (!soundEnabled) return;
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = 800;
+            gain.gain.value = 0.1;
+            osc.start();
+            osc.stop(ctx.currentTime + 0.15);
+        } catch (e) {}
+    }
+
+    // ---- WORKER CARD EXPAND ----
+    function toggleWorkerDetail(id) {
+        const card = document.querySelector(`[data-worker-id="${id}"]`);
+        if (card) {
+            card.classList.toggle('expanded');
+            if (card.classList.contains('expanded')) {
+                // Fetch full output
+                fetch(`/api/worker-output?name=${id}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        const terminal = card.querySelector('.worker-terminal');
+                        if (terminal) terminal.textContent = data.output || 'No output';
+                    });
+            }
+        }
+    }
+
+    // ---- RENDER ----
+    function render(data) {
+        state = data;
+
+        // Header
+        document.getElementById('status-dot').className = data.workers.length > 0 ? 'header-dot' : 'header-dot offline';
+        document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+        document.getElementById('worker-count-badge').textContent = data.summary.totalWorkers;
+
+        // Project bar
+        document.getElementById('project-pct').textContent = data.summary.projectProgress + '%';
+        document.getElementById('project-progress-fill').style.width = data.summary.projectProgress + '%';
+        document.getElementById('stat-tasks').textContent = data.summary.totalTasks;
+        document.getElementById('stat-done').textContent = data.summary.completedTasks;
+        document.getElementById('stat-workers').textContent = data.summary.totalWorkers;
+
+        if (data.summary.totalTasks > 0) {
+            document.getElementById('project-name').textContent = 'Active Project';
+        }
+
+        // Workers
+        renderWorkers(data.workers);
+
+        // Attention
+        renderAttention(data.workers);
+
+        // Completed
+        renderCompleted(data.tasks.completed);
+
+        // Kanban
+        renderKanban(data.tasks);
+
+        // Agents
+        renderAgents(data.history);
+
+        // Log
+        renderLog(data.log);
+
+        // Sound notification on new completion
+        if (data.summary.done > 0 && data.workers.length !== previousWorkerCount) {
+            playNotification();
+        }
+        previousWorkerCount = data.workers.length;
+    }
+
+    function renderWorkers(workers) {
+        const grid = document.getElementById('workers-grid');
+        if (workers.length === 0) {
+            grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#9678;</div><div class="empty-state-text">No active workers. Dispatch a task to get started.</div></div>';
+            return;
+        }
+        grid.innerHTML = workers.map(w => `
+            <div class="worker-card ${w.status.toLowerCase()}" data-worker-id="${w.id}" onclick="toggleWorkerDetail('${w.id}')">
+                <div class="worker-header">
+                    <div class="worker-name">${w.name}</div>
+                    <div class="worker-badge ${w.status.toLowerCase()}">${w.status}</div>
+                </div>
+                <div class="worker-status-text">${w.statusText}</div>
+                ${w.progress !== null ? `<div class="worker-progress"><div class="worker-progress-fill" style="width: ${w.progress}%"></div></div>` : ''}
+                <div class="worker-detail">
+                    <div class="worker-terminal">Loading terminal output...</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderAttention(workers) {
+        const section = document.getElementById('attention-section');
+        const list = document.getElementById('attention-list');
+        const needsAttention = workers.filter(w => w.status === 'BLOCKED' || w.status === 'ERROR');
+
+        if (needsAttention.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        section.style.display = 'block';
+        list.innerHTML = needsAttention.map(w => `
+            <div class="attention-card ${w.status === 'ERROR' ? 'error' : 'warn'}">
+                <div class="attention-worker">${w.name}</div>
+                <div class="attention-message">${w.statusText}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderCompleted(completed) {
+        const section = document.getElementById('completed-section');
+        const list = document.getElementById('completed-list');
+
+        if (completed.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        section.style.display = 'block';
+        list.innerHTML = completed.slice(-10).reverse().map(t => `
+            <div class="completed-item">
+                <span class="completed-check">&#10003;</span>
+                <span class="completed-text">${t.text}</span>
+            </div>
+        `).join('');
+    }
+
+    function renderKanban(tasks) {
+        const render = (el, items) => {
+            el.innerHTML = items.length > 0
+                ? items.map(t => `<div class="kanban-card">${t.text}</div>`).join('')
+                : '<div style="color: var(--text-muted); font-size: 12px; text-align: center; padding: 20px;">Empty</div>';
+        };
+
+        render(document.getElementById('kanban-todo'), tasks.pending);
+        render(document.getElementById('kanban-progress'), tasks.active);
+        render(document.getElementById('kanban-done'), tasks.completed);
+        render(document.getElementById('kanban-blocked'), tasks.failed);
+
+        document.getElementById('kanban-todo-count').textContent = tasks.pending.length;
+        document.getElementById('kanban-progress-count').textContent = tasks.active.length;
+        document.getElementById('kanban-done-count').textContent = tasks.completed.length;
+        document.getElementById('kanban-blocked-count').textContent = tasks.failed.length;
+    }
+
+    function renderAgents(history) {
+        const body = document.getElementById('agent-table-body');
+        const empty = document.getElementById('agents-empty');
+
+        if (history.length === 0) {
+            body.innerHTML = '';
+            empty.style.display = 'block';
+            return;
+        }
+
+        empty.style.display = 'none';
+        body.innerHTML = history.map(h => `
+            <tr>
+                <td class="agent-name">${h.worker}</td>
+                <td>${h.timestamp}</td>
+                <td class="prompt-preview">${h.prompt}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderLog(log) {
+        const list = document.getElementById('log-list');
+        const filtered = activeFilter === 'all' ? log : log.filter(l => l.level === activeFilter);
+
+        list.innerHTML = filtered.reverse().map(l => {
+            const time = l.time ? l.time.split(' ').pop() || l.time : '';
+            return `
+                <div class="log-entry">
+                    <div class="log-time">${time}</div>
+                    <div class="log-msg ${l.level}">${l.message}</div>
+                </div>
+            `;
+        }).join('');
+
+        if (filtered.length === 0) {
+            list.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">No log entries</div>';
+        }
+    }
+
+    // ---- WEBSOCKET ----
+    function connectWS() {
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${protocol}//${location.host}`);
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'init' || msg.type === 'update') {
+                render(msg.data);
+            }
+        };
+
+        ws.onclose = () => {
+            document.getElementById('status-dot').className = 'header-dot offline';
+            document.getElementById('last-update').textContent = 'Disconnected. Reconnecting...';
+            setTimeout(connectWS, 3000);
+        };
+
+        ws.onerror = () => ws.close();
+    }
+
+    connectWS();
+</script>
+</body>
+</html>
