@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Jarvis Dispatcher Monitor Server v2
+// Hive Command Center Server v3
 // Serves dashboard UI, REST API, and WebSocket for real-time updates
 // Run: node server.js (default port 3939)
 
@@ -83,7 +83,6 @@ function getWorkers() {
                     statusText = 'Cannot read terminal output';
                 }
 
-                // Get last 15 lines for display
                 const displayLines = termOutput.split('\n').slice(-15).join('\n');
 
                 return {
@@ -215,7 +214,6 @@ function getFullStatus() {
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
 
-    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
 
@@ -270,15 +268,13 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
-    // Send initial state
     ws.send(JSON.stringify({ type: 'init', data: getFullStatus() }));
 
-    // Set up periodic updates
     const interval = setInterval(() => {
         if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'update', data: getFullStatus() }));
         }
-    }, 3000);
+    }, 5000);
 
     ws.on('close', () => clearInterval(interval));
 });
@@ -288,6 +284,6 @@ wss.on('connection', (ws) => {
 // ============================================================
 
 server.listen(PORT, () => {
-    console.log(`Jarvis Dispatcher Monitor v2 running at http://localhost:${PORT}`);
+    console.log(`Hive Command Center running at http://localhost:${PORT}`);
     console.log(`WebSocket available at ws://localhost:${PORT}`);
 });
