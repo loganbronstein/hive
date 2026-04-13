@@ -1,0 +1,9 @@
+node_modules/
+*.log
+morning-report.md
+tonight-brief.md
+overnight-state.md
+task-queue.md
+test-queue.md
+research/
+dispatcher.log
